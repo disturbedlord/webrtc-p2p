@@ -21,8 +21,7 @@
         document.getElementById("log").textContent += message + "\n";
       };
 
-      const ws = new WebSocket(`ws://${location.host}`);
-
+      const ws = new WebSocket("wss://webrtc-p2p-awnx.onrender.com");
       let pc;
       let dataChannel;
 
