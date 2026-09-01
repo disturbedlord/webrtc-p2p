@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Simple WebRTC P2P</title>
+  </head>
+
+  <body>
+    <h1>WebRTC P2P Chat</h1>
+
+    <button id="start">Start Connection</button>
+
+    <br /><br />
+
+    <input id="message" placeholder="Message" />
+    <button id="send">Send</button>
+
+    <pre id="log"></pre>
+
+    <script>
+      const log = (message) => {
+        document.getElementById("log").textContent += message + "\n";
+      };
+
+      const ws = new WebSocket(`ws://${location.host}`);
+
+      let pc;
+      let dataChannel;
+
+      // Create WebRTC connection
+      function createPeerConnection() {
+        pc = new RTCPeerConnection({
+          iceServers: [
+            {
+              urls: "stun:stun.l.google.com:19302",
+            },
+          ],
+        });
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            ws.send(
+              JSON.stringify({
+                type: "candidate",
+                candidate: event.candidate,
+              }),
+            );
+          }
+        };
+
+        pc.ondatachannel = (event) => {
+          dataChannel = event.channel;
+
+          setupDataChannel();
+        };
+      }
+
+      // Setup DataChannel
+      function setupDataChannel() {
+        dataChannel.onopen = () => {
+          log("P2P connection established!");
+        };
+
+        dataChannel.onmessage = (event) => {
+          log("Peer: " + event.data);
+        };
+      }
+
+      // Start connection
+      document.getElementById("start").onclick = async () => {
+        createPeerConnection();
+
+        // This browser creates the DataChannel
+        dataChannel = pc.createDataChannel("chat");
+
+        setupDataChannel();
+
+        const offer = await pc.createOffer();
+
+        await pc.setLocalDescription(offer);
+
+        ws.send(
+          JSON.stringify({
+            type: "offer",
+            offer: pc.localDescription,
+          }),
+        );
+      };
+
+      // Handle signaling messages
+      ws.onmessage = async (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "offer") {
+          log("Received offer");
+
+          createPeerConnection();
+
+          await pc.setRemoteDescription(message.offer);
+
+          const answer = await pc.createAnswer();
+
+          await pc.setLocalDescription(answer);
+
+          ws.send(
+            JSON.stringify({
+              type: "answer",
+              answer: pc.localDescription,
+            }),
+          );
+        } else if (message.type === "answer") {
+          log("Received answer");
+
+          await pc.setRemoteDescription(message.answer);
+        } else if (message.type === "candidate") {
+          try {
+            await pc.addIceCandidate(message.candidate);
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      };
+
+      // Send message
+      document.getElementById("send").onclick = () => {
+        const input = document.getElementById("message");
+
+        dataChannel.send(input.value);
+
+        log("You: " + input.value);
+
+        input.value = "";
+      };
+    </script>
+  </body>
+</html>
